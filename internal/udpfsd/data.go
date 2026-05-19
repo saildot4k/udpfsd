@@ -13,7 +13,10 @@ import (
 func (s *Server) dataHandler() {
 	defer s.wg.Done()
 
-	s.dataConn.SetReadBuffer(2048)
+	// Larger socket receive buffer reduces packet loss during bursts.
+	if err := s.dataConn.SetReadBuffer(1 << 20); err != nil && s.verbose {
+		log.Printf("udpfsd/data: failed to set read buffer: %v", err)
+	}
 	buf := make([]byte, 2048)
 	for {
 		n, addr, err := s.dataConn.ReadFromUDP(buf)
@@ -31,13 +34,11 @@ func (s *Server) dataHandler() {
 			// UDPFS data packet must be at least 6 bytes long
 			continue
 		}
-		if s.singleThreaded {
-			s.handleData(buf[:n], addr)
-		} else {
-			pkt := make([]byte, n)
-			copy(pkt, buf[:n])
-			go s.handleData(pkt, addr)
-		}
+		// UDPRDMA sequence handling is order-sensitive. Dispatching each packet
+		// to a goroutine can reorder processing under scheduler contention and
+		// trigger false unexpected-sequence errors. Keep processing in socket
+		// receive order.
+		s.handleData(buf[:n], addr)
 	}
 }
 
