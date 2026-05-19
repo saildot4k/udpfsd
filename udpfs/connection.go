@@ -19,6 +19,10 @@ type Connection struct {
 	*metricCollector
 
 	usedHandles map[int32]cachedHandle
+	// WRITE_DATA packets do not include a handle, so we track the active write
+	// handle from the preceding WRITE_REQ/BWRITE_REQ.
+	activeWriteHandle int32
+	activeWriteValid  bool
 
 	sync.Mutex
 	dataBuffer [128 * 1024]byte // 128 KB read buffer
@@ -139,6 +143,10 @@ func (c *Connection) removeHandle(handle int32) {
 	c.Lock()
 	defer c.Unlock()
 	delete(c.usedHandles, handle)
+	if c.activeWriteValid && c.activeWriteHandle == handle {
+		c.activeWriteValid = false
+		c.activeWriteHandle = 0
+	}
 }
 
 // Resets all peer handles
@@ -151,6 +159,8 @@ func (c *Connection) ResetPeer() {
 		h.reset = true
 		c.usedHandles[fsHandle] = h
 	}
+	c.activeWriteValid = false
+	c.activeWriteHandle = 0
 }
 
 // Closes all peer handles
@@ -162,4 +172,26 @@ func (c *Connection) Close() {
 		c.fs.Close(fsHandle)
 		delete(c.usedHandles, fsHandle)
 	}
+	c.activeWriteValid = false
+	c.activeWriteHandle = 0
+}
+
+func (c *Connection) setActiveWriteHandle(handle int32) {
+	c.Lock()
+	defer c.Unlock()
+	c.activeWriteHandle = handle
+	c.activeWriteValid = true
+}
+
+func (c *Connection) clearActiveWriteHandle() {
+	c.Lock()
+	defer c.Unlock()
+	c.activeWriteHandle = 0
+	c.activeWriteValid = false
+}
+
+func (c *Connection) getActiveWriteHandle() (int32, bool) {
+	c.Lock()
+	defer c.Unlock()
+	return c.activeWriteHandle, c.activeWriteValid
 }

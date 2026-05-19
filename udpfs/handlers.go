@@ -159,9 +159,11 @@ func (c *Connection) handleWriteReq(addr *net.UDPAddr, payload []byte) int {
 
 	if err := c.fs.WriteStart(handle); err != nil {
 		errCode := -errToErrno(err)
+		c.clearActiveWriteHandle()
 		c.SendWriteDone(addr, errCode)
 		return int(errCode)
 	}
+	c.setActiveWriteHandle(handle)
 	if len(payload) <= 12 {
 		c.SendACK(addr, true)
 		return 0
@@ -182,6 +184,7 @@ func (c *Connection) handleWriteReq(addr *net.UDPAddr, payload []byte) int {
 	done, err := c.fs.WriteChunk(handle, chunkNr, chunkSize, totalChunks, chunkData)
 	if err != nil {
 		errCode := -errToErrno(err)
+		c.clearActiveWriteHandle()
 		c.SendWriteDone(addr, errCode)
 		return int(errCode)
 	}
@@ -189,9 +192,11 @@ func (c *Connection) handleWriteReq(addr *net.UDPAddr, payload []byte) int {
 		n, err := c.fs.CompleteWrite(handle)
 		if err != nil {
 			errCode := -errToErrno(err)
+			c.clearActiveWriteHandle()
 			c.SendWriteDone(addr, errCode)
 			return int(errCode)
 		}
+		c.clearActiveWriteHandle()
 		c.SendWriteDone(addr, n)
 		return len(payload)
 	}
@@ -205,7 +210,11 @@ func (c *Connection) handleWriteData(addr *net.UDPAddr, payload []byte) int {
 		c.SendACK(addr, true)
 		return 0
 	}
-	handle := int32(binary.LittleEndian.Uint32(payload[4:8]))
+	handle, ok := c.getActiveWriteHandle()
+	if !ok {
+		c.SendWriteDone(addr, -EINVAL)
+		return -EINVAL
+	}
 	chunkNr := binary.LittleEndian.Uint16(payload[2:4])
 	chunkSize := binary.LittleEndian.Uint16(payload[4:6])
 	totalChunks := binary.LittleEndian.Uint16(payload[6:8])
@@ -217,6 +226,7 @@ func (c *Connection) handleWriteData(addr *net.UDPAddr, payload []byte) int {
 	done, err := c.fs.WriteChunk(handle, chunkNr, chunkSize, totalChunks, chunkData)
 	if err != nil {
 		errCode := -errToErrno(err)
+		c.clearActiveWriteHandle()
 		c.SendWriteDone(addr, errCode)
 		return int(errCode)
 	}
@@ -224,9 +234,11 @@ func (c *Connection) handleWriteData(addr *net.UDPAddr, payload []byte) int {
 		n, err := c.fs.CompleteWrite(handle)
 		if err != nil {
 			errCode := -errToErrno(err)
+			c.clearActiveWriteHandle()
 			c.SendWriteDone(addr, errCode)
 			return int(errCode)
 		}
+		c.clearActiveWriteHandle()
 		c.SendWriteDone(addr, n)
 		return len(payload)
 	}
@@ -400,9 +412,11 @@ func (c *Connection) handleBwriteReq(addr *net.UDPAddr, payload []byte) int {
 
 	if err := c.fs.BwriteStart(handle, sectorNr, sectorCount); err != nil {
 		errCode := -errToErrno(err)
+		c.clearActiveWriteHandle()
 		c.SendWriteDone(addr, errCode)
 		return int(errCode)
 	}
+	c.setActiveWriteHandle(handle)
 	if len(payload) <= 16 {
 		c.SendACK(addr, true)
 		return 0
@@ -422,6 +436,7 @@ func (c *Connection) handleBwriteReq(addr *net.UDPAddr, payload []byte) int {
 	done, err := c.fs.WriteChunk(handle, chunkNr, chunkSize, totalChunks, chunkData)
 	if err != nil {
 		errCode := -errToErrno(err)
+		c.clearActiveWriteHandle()
 		c.SendWriteDone(addr, errCode)
 		return int(errCode)
 	}
@@ -429,9 +444,11 @@ func (c *Connection) handleBwriteReq(addr *net.UDPAddr, payload []byte) int {
 		n, err := c.fs.CompleteWrite(handle)
 		if err != nil {
 			errCode := -errToErrno(err)
+			c.clearActiveWriteHandle()
 			c.SendWriteDone(addr, errCode)
 			return int(errCode)
 		}
+		c.clearActiveWriteHandle()
 		c.SendWriteDone(addr, n)
 		return len(payload)
 	}

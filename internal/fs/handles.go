@@ -98,11 +98,17 @@ func (s *Backend) freeHandle(handle int32) bool {
 		// Block device is opened for server lifetime
 		return true
 	}
+	if handle <= 0 {
+		return false
+	}
 	s.Lock()
 	defer s.Unlock()
 
 	// Handle 0 is reserved for block device, so our external handles start with 1
 	handle = handle - 1
+	if handle < 0 || handle >= int32(len(s.handles)) {
+		return false
+	}
 
 	if h := s.handles[handle]; h != nil {
 		h.Close()
@@ -113,18 +119,23 @@ func (s *Backend) freeHandle(handle int32) bool {
 }
 
 func (s *Backend) getFile(handle int32) *fileHandle {
-	if handle < 0 {
-		return nil
-	}
-
 	if handle == udpfs.BlockDeviceHandle {
+		if s.bdHandle == nil {
+			return nil
+		}
 		return s.bdHandle.fileHandle
+	}
+	if handle <= 0 {
+		return nil
 	}
 	s.Lock()
 	defer s.Unlock()
 
 	// Handle 0 is reserved for block device, so our external handles start with 1
 	handle = handle - 1
+	if handle < 0 || handle >= int32(len(s.handles)) {
+		return nil
+	}
 
 	h := s.handles[handle]
 	if h == nil {
@@ -167,11 +178,17 @@ func (s *Backend) getFileState(hostPath string) (open bool, readOnly bool) {
 }
 
 func (s *Backend) getDir(handle int32) *dirHandle {
+	if handle <= 0 {
+		return nil
+	}
 	s.Lock()
 	defer s.Unlock()
 
 	// Handle 0 is reserved for block device, so our external handles start with 1
 	handle = handle - 1
+	if handle < 0 || handle >= int32(len(s.handles)) {
+		return nil
+	}
 
 	h := s.handles[handle]
 	if h == nil {
